@@ -2,9 +2,30 @@
 
 > Grade LaTeX assignment submissions with an OpenAI-compatible LLM.
 
-`grader-ai` extracts `\answer{...}` macros from a reference file and `\solution{...}`
-macros from a student submission, compares each pair with an LLM, writes per-problem
-results to JSONL, and prints a final score summary.
+`grader-ai` parses problems and answers from a reference TeX file, parses student
+solutions from a submission TeX file, asks an LLM to score each response, and
+writes a JSON report.
+
+## Table of Contents
+
+- [Background](#background)
+- [Install](#install)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Background
+
+The CLI currently extracts:
+
+- Problem text from reference macros: `\problemTF{...}`, `\problemMC{...}`,
+  `\problemPS{...}`, `\problemAI{...}`
+- Reference answers from `\answer{...}`
+- Student responses from `\solution{...}`
+
+Each graded item is aligned by order and scored by the model from `0` to that
+problem's credit value.
 
 ## Install
 
@@ -16,27 +37,36 @@ uv sync
 
 ## Usage
 
-Run the CLI with a reference TeX file and a student submission TeX file:
+Run the CLI with a reference TeX file, submission TeX file, output path, and
+model name:
 
 ```bash
-uv run grader-ai -r examples/reference.tex -s examples/submission.tex -o results.jsonl -m gpt-4o-mini
+uv run grader-ai \
+  --reference examples/reference.tex \
+  --submission examples/submission.tex \
+  --output results.json \
+  --model gpt-4o-mini
 ```
 
-Validate parsing and macro pairing only (skip API calls):
+CLI options:
 
-```bash
-uv run grader-ai --reference examples/reference.tex --submission examples/submission.tex --dry-run
-```
+- `-r, --reference`: path to the reference TeX file (required)
+- `-s, --submission`: path to the student submission TeX file (required)
+- `-o, --output`: path to JSON output file (required)
+- `-m, --model`: model name passed to the OpenAI-compatible API (required)
 
-Expected macro format:
+Output is a single JSON report with this structure:
 
-- Reference file contains one or more `\answer{...}` entries.
-- Submission file contains matching `\solution{...}` entries.
-- Counts must match (`N` answers and `N` solutions).
+- `reference`: input reference filename
+- `submission`: input submission filename
+- `grades`: list of per-problem grading results (`problem`, `credits`, `answer`,
+  `response`, `score`, `feedback`)
+- `total_score`: sum of all per-problem scores
 
 ## Configuration
 
-Set environment variables in your shell or a `.env` file:
+`grader-ai` loads `.env` automatically (`python-dotenv`) and initializes the
+OpenAI client from environment variables.
 
 ```bash
 OPENAI_API_KEY=your_api_key
@@ -44,15 +74,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
 - `OPENAI_API_KEY`: API key for your OpenAI-compatible provider.
-- `OPENAI_BASE_URL`: Base URL for the provider API.
-
-CLI options:
-
-- `-r, --reference`: path to the reference TeX file.
-- `-s, --submission`: path to the student submission TeX file.
-- `-o, --output`: path to JSONL output file (required for grading mode).
-- `-m, --model`: model name (default: `gpt-4o-mini`).
-- `-n, --dry-run`: parse and validate only, without grading API calls.
+- `OPENAI_BASE_URL`: optional base URL for OpenAI-compatible providers.
 
 ## Contributing
 
@@ -71,4 +93,4 @@ uv run pytest
 
 ## License
 
-MIT © Zijian Zhang
+MIT (c) Zijian Zhang
