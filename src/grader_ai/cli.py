@@ -61,8 +61,7 @@ def main() -> None:
         total_score=sum(result.score for result in grading_results),
     )
 
-    with args.output.open("a") as f:
-        json.dump(asdict(report), f)
+    args.output.write_text(json.dumps(asdict(report), indent=2))
 
 
 def _parse_args() -> _Args:
