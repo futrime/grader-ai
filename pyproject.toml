@@ -1,0 +1,17 @@
+[project]
+name = "grader-ai"
+version = "0.1.0"
+description = "Grade assignments with LLMs"
+readme = "README.md"
+authors = [
+    { name = "Zijian Zhang", email = "35801754+futrime@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+grader-ai = "grader_ai:main"
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"
