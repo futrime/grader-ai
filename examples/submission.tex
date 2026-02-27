@@ -1,0 +1,67 @@
+\documentclass{article}
+
+\usepackage{fullpage}
+\usepackage{xcolor}
+
+\newcounter{placeholderCount}
+\newcommand{\placeholder}[1]{{
+    \stepcounter{placeholderCount}
+    \color{red} [#1]
+}}
+
+\newcounter{solutionCount}
+\newcommand{\solution}[1]{
+    \stepcounter{solutionCount}
+    \paragraph{Solution \thesolutionCount.}
+    {
+        #1
+    }
+}
+
+\title{
+    Deep Learning (Spring 2026) \\
+    Solution for Assignment
+    0
+}
+\author{
+    Alex Student
+    \\
+    20260001
+}
+
+\begin{document}
+
+\maketitle
+
+\solution{
+    True.
+}
+
+\solution{
+    False. The course name is Deep Learning, not Deep Sleeping.
+}
+
+\solution{
+    C.
+}
+
+\solution{
+    A, B, C, E.
+}
+
+\solution{
+    I selected this course to build a strong foundation in modern machine learning and apply it to practical problems.
+}
+
+\solution{
+    I used AI (ChatGPT) to proofread wording and check grammar in my written responses.
+}
+
+\ifnum\value{placeholderCount}>0
+    \vfill
+    \begin{center}
+        \color{red} \framebox{\textbf{WARNING: PLEASE REMOVE ALL PLACEHOLDERS BEFORE SUBMISSION}}
+    \end{center}
+\fi
+
+\end{document}

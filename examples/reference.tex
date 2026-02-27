@@ -1,0 +1,147 @@
+\documentclass{article}
+
+\usepackage[shortlabels]{enumitem}
+\usepackage{etoolbox}
+\usepackage{fullpage}
+\usepackage{parskip}
+\usepackage{titling}
+\usepackage{xcolor}
+
+\newcounter{problemCount}
+\newcommand{\problemTF}[1]{
+    \stepcounter{problemCount}
+    \paragraph{Problem \theproblemCount. (10 pts)}
+    {
+        #1
+    }
+}
+\newcommand{\problemMC}[1]{
+    \stepcounter{problemCount}
+    \paragraph{Problem \theproblemCount. (20 pts)}
+    {
+        #1
+    }
+}
+\newcommand{\problemPS}[1]{
+    \stepcounter{problemCount}
+    \paragraph{Problem \theproblemCount. (30 pts)}
+    {
+        #1
+    }
+}
+\newcommand{\problemAI}[1]{
+    \stepcounter{problemCount}
+    \paragraph{Problem \theproblemCount. (10 pts)}
+    {
+        #1
+    }
+}
+
+\newtoggle{showanswers}
+\newcommand{\answer}[1]{
+    \iftoggle{showanswers}{
+        \paragraph{Answer \theproblemCount.}
+        {
+            \color{violet}
+            #1
+        }
+    }{
+    }
+}
+
+\title{
+    Deep Learning (Spring 2026) \\
+    Assignment 0
+}
+
+\preauthor{}
+\postauthor{}
+\author{}
+
+\predate{}
+\postdate{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+% \toggletrue{showanswers} % Uncomment this to show answers.
+
+\noindent \textbf{Submission Instructions.} You are \textbf{required} to download and use the assignment solution template from the web learning portal. Failure to use the provided template may result in a lower grade. Your final submission must be a \texttt{.zip} archive containing both a \texttt{main.tex} file and a compiled \texttt{main.pdf} file. Please note that your grade will primarily be evaluated based on the contents of your \texttt{main.tex} file.
+
+\noindent \textbf{Grading Policy.} This assignment is optional and will not be calculated in your final grade. However, we highly encourage you to complete it to receive early feedback and ensure you are fully prepared for upcoming graded milestones.
+
+\section{True or False Questions}
+
+For each of the following statements, indicate whether it is \textbf{True} or \textbf{False}. If the statement is False, provide a brief one-sentence explanation as to why.
+
+\problemTF{
+    Prof. Yi Wu is an instructor of this course.
+}
+
+\answer{
+    True.
+}
+
+\problemTF{
+    The name of this course is Deep Sleeping.
+}
+\answer{
+    False. It's Deep Learning.
+}
+
+\section{Multiple Choice Questions}
+
+Select all applicable options. One or more options may be correct. Full credit requires all correct answers; half credit is awarded for partial sets of correct answers. Selecting any incorrect option results in zero credit.
+
+\problemMC{
+    How many ``e"'s are there in the term ``Deep Learning"
+    \begin{enumerate}[A.]
+        \item 1
+        \item 2
+        \item 3
+    \end{enumerate}
+}
+\answer{
+    C.
+}
+
+\problemMC{
+    Which of the following expressions are correct?
+    \begin{enumerate}[A.]
+        \item $1+1=2$
+        \item $e^{i\pi}+1=0$
+        \item $3^2+4^2=5^2$
+        \item $1000-7=996$
+        \item $33550336_{10}=1111111111111000000000000_{2}$
+    \end{enumerate}
+}
+\answer{
+    ABCE.
+}
+
+\section{Problem-Solving Questions}
+
+\problemPS{
+    Why do you select this course?
+}
+\answer{
+    (Any reasonable answer.)
+}
+
+\section{AI Usage Disclosure}
+
+\problemAI{
+    Please honestly disclose whether you used an AI while completing this assignment.
+    
+    \begin{itemize}
+        \item If you did not use an AI, please write ``None."
+        \item If you did use an AI, please describe how you used it (e.g., for brainstorming, for editing, for generating code, etc.) and what AI did you used.
+    \end{itemize}
+}
+\answer{
+    (Any reasonable answer.)
+}
+
+\end{document}

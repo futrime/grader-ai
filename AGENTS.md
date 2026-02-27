@@ -30,14 +30,6 @@ Preferred setup from repo root:
 uv sync
 ```
 
-Fallback setup when `uv` is unavailable:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
 ## Build, Lint, and Test Commands
 
 This repository is minimal: no lint or test tool is pinned in `pyproject.toml`.
@@ -111,6 +103,9 @@ Only repository-specific additions:
 - Add type hints for public functions and methods.
 - Use `logging` for diagnostics and keep CLI output concise.
 - Use `pytest` conventions (`tests/test_*.py`, `test_*` names) when tests exist.
+
+For README.md, strictly follow standard-readme conventions:
+https://raw.githubusercontent.com/RichardLitt/standard-readme/refs/heads/main/spec.md
 
 ## Change Management for Agents
 
