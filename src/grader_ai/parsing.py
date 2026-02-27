@@ -28,16 +28,16 @@ def parse(reference: str, submission: str) -> list[ParseResult]:
     credits_by_macro = _extract_problem_credits(reference)
     answers = _extract_macro_arguments(reference, "answer")
     responses = _extract_macro_arguments(submission, "solution")
+
+    matched_count = min(len(problems), len(responses))
     return [
         ParseResult(
-            problem=problem,
-            credits=credits_by_macro.get(problem_macro, 0),
-            answer=answer,
-            response=response,
+            problem=problems[index][1],
+            credits=credits_by_macro.get(problems[index][0], 0),
+            answer=answers[index] if index < len(answers) else "",
+            response=responses[index],
         )
-        for (problem_macro, problem), answer, response in zip(
-            problems, answers, responses
-        )
+        for index in range(matched_count)
     ]
 
 

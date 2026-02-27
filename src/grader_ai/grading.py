@@ -15,6 +15,10 @@ class GradingError(ValueError):
 
 @dataclass(frozen=True)
 class GradeResult:
+    problem: str
+    credits: int
+    answer: str
+    response: str
     score: int
     feedback: str
 
@@ -101,5 +105,10 @@ def grade(client: OpenAI, model: str, parsed: ParseResult) -> GradeResult:
     grading_result = json.loads(tool_call.function.arguments)
 
     return GradeResult(
-        score=grading_result["score"], feedback=grading_result["feedback"]
+        problem=parsed.problem,
+        credits=parsed.credits,
+        answer=parsed.answer,
+        response=parsed.response,
+        score=grading_result["score"],
+        feedback=grading_result["feedback"],
     )
