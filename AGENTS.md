@@ -1,127 +1,135 @@
 # AGENTS.md
 
-This file gives coding agents project-specific instructions for `grader-ai`.
+Guide for autonomous coding agents working in this repository.
 
-## Project Snapshot
+## Repository Overview
 
-- Language: Python
-- Packaging: `pyproject.toml` (PEP 621 metadata)
-- Build backend: `uv_build`
-- Python requirement: `>=3.12`
-- Importable package: `src/grader_ai/`
-- CLI entry point: `grader-ai` -> `grader_ai:main`
+- Project: `grader-ai`
+- Language: Python `>=3.12`
+- Dependency and command runner: `uv`
+- Source package: `src/grader_ai/`
+- Console entrypoint: `grader-ai = grader_ai.cli:main`
 
-## Repository Rules Discovery
+Primary modules:
 
-Checked for additional agent rules and found none:
+- `src/grader_ai/cli.py`: CLI commands (`grade`, `serve`)
+- `src/grader_ai/app.py`: Gradio UI and live progress updates
+- `src/grader_ai/core.py`: orchestration and parallel grading engine
+- `src/grader_ai/extraction.py`: extract submissions from `.tex` / `.zip`
+- `src/grader_ai/parsing.py`: parse reference/submission LaTeX
+- `src/grader_ai/grading.py`: OpenAI tool-call grading contract
 
-- `.cursor/rules/`: not present
-- `.cursorrules`: not present
-- `.github/copilot-instructions.md`: not present
+## Setup and Environment
 
-If any of these files are added later, agents should treat them as higher-priority
-repository instructions and update this document accordingly.
-
-## Setup
-
-Preferred setup from repo root:
+Install dependencies:
 
 ```bash
 uv sync
 ```
 
-## Build, Lint, and Test Commands
+Environment variables are loaded from `.env` via `python-dotenv`:
 
-This repository is minimal: no lint or test tool is pinned in `pyproject.toml`.
-Use these commands as defaults and report missing tools clearly.
+- `OPENAI_API_KEY` (required)
+- `OPENAI_BASE_URL` (optional, for OpenAI-compatible providers)
 
-### Build / Run
+Agent rules:
+
+- Never hardcode secrets.
+- Never commit private keys or tokens.
+- Treat `.env` as sensitive local configuration.
+
+## Build / Lint / Test Commands
+
+There is no separate compile step; use these standard commands.
+
+Install or refresh dependencies:
 
 ```bash
-# build sdist + wheel
-uv build
-
-# editable install smoke check
-uv pip install -e .
-
-# run CLI entry point
-uv run grader-ai
+uv sync
 ```
 
-### Lint / Format (Ruff only)
+Lint:
 
 ```bash
 uv run ruff check .
-uv run ruff format .
 ```
 
-Use Ruff as the only code quality tool in this repository.
-Do not add or run mypy/flake8/pylint/black/isort unless the user requests it.
-If `ruff` is missing, report that linting is not configured in this repo yet.
-
-### Tests
-
-There is no `tests/` directory yet, but use `pytest` conventions when tests are added.
+Lint with automatic fixes:
 
 ```bash
-# run all tests
+uv run ruff check . --fix
+```
+
+Run all tests:
+
+```bash
 uv run pytest
-
-# run a single test file
-uv run pytest tests/test_example.py
-
-# run a single test function
-uv run pytest tests/test_example.py::test_specific_behavior
-
-# filter by expression
-uv run pytest -k "keyword"
-
-# stop on first failure
-uv run pytest -x
-
-# verbose + print output for one test
-uv run pytest -vv -s tests/test_example.py::test_specific_behavior
 ```
 
-## Expected Agent Workflow
-
-1. Read `pyproject.toml` before proposing or running project commands.
-2. Prefer `uv run ...` for Python tooling in this repository.
-3. Keep changes scoped to the user request; avoid broad refactors.
-4. Run the narrowest relevant verification command first, then widen as needed.
-5. If a command cannot run, state exactly why and give fallback.
-6. Use Ruff only for linting/formatting tasks.
-
-## Code Style Guidelines
-
-Follow the Google Python Style Guide directly:
-https://google.github.io/styleguide/pyguide.html
-
-Only repository-specific additions:
-
-- Prefer absolute imports from `grader_ai`.
-- Add type hints for public functions and methods.
-- Use `logging` for diagnostics and keep CLI output concise.
-- Use `pytest` conventions (`tests/test_*.py`, `test_*` names) when tests exist.
-
-For README.md, strictly follow standard-readme conventions:
-https://raw.githubusercontent.com/RichardLitt/standard-readme/refs/heads/main/spec.md
-
-## Change Management for Agents
-
-- Do not add heavy dependencies without clear justification.
-- Update `pyproject.toml` when adding runtime or dev dependencies.
-- Document any new lint/test/type commands in this file.
-- Prefer incremental, reviewable patches.
-- Explicitly mention checks you could not run and why.
-
-## Quick Command Reference
+Run one test file:
 
 ```bash
-uv sync
-uv run grader-ai
-uv build
-uv run pytest tests/test_example.py::test_specific_behavior
-uv run ruff check .
-uv run ruff format .
+uv run pytest tests/test_example.py
 ```
+
+Run one specific test function (pytest node id):
+
+```bash
+uv run pytest tests/test_example.py::test_specific_behavior
+```
+
+Run tests by keyword:
+
+```bash
+uv run pytest -k "specific_behavior"
+```
+
+Verbose test output:
+
+```bash
+uv run pytest -vv
+```
+
+Current repo note:
+
+- No `tests/` files were found when this document was generated.
+- If adding tests, use pytest discovery conventions (`tests/test_*.py`).
+
+## Runtime Commands
+
+Grade from CLI:
+
+```bash
+uv run grader-ai grade \
+  --model gpt-4o-mini \
+  --reference path/to/reference.tex \
+  --submission path/to/submission_or_dir_or_zip \
+  --output path/to/output_dir
+```
+
+Grade with parallel workers:
+
+```bash
+uv run grader-ai grade -m gpt-4o-mini -r ref.tex -s submissions.zip -o out --parallel 4
+```
+
+Launch web UI:
+
+```bash
+uv run grader-ai serve --host 0.0.0.0 --port 7860
+```
+
+## Architecture Guardrails
+
+- Keep `core.py` free from file I/O.
+- Keep filesystem concerns in CLI/UI/extraction layers.
+- Preserve JSON report schema compatibility.
+- Maintain `.tex` and `.zip` support (including nested zip flows).
+
+## Quick Agent Checklist
+
+1. Run `uv run ruff check --fix` and `uv run ruff format`
+2. Run `uv run pytest` (or a targeted single-test node id)
+3. Verify affected runtime path(s) still work
+4. Ensure no secrets or machine-specific artifacts were introduced
+5. Keep edits minimal and aligned with existing module boundaries
