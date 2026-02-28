@@ -1,9 +1,12 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import logging
 import re
 from typing import Any
 
 from pylatexenc.latexwalker import LatexGroupNode, LatexMacroNode, LatexWalker
 from pylatexenc.macrospec import LatexContextDb, MacroSpec, MacroStandardArgsParser
+
+logger = logging.getLogger(__name__)
 
 _DEFINITION_MACROS = {
     "newcommand",
@@ -23,22 +26,84 @@ class ParseResult:
     response: str
 
 
-def parse(reference: str, submission: str) -> list[ParseResult]:
+@dataclass(frozen=True)
+class ParseOutcome:
+    """Result of parsing a reference/submission pair."""
+
+    results: list[ParseResult]
+    warnings: list[str] = field(default_factory=list)
+
+
+def parse(reference: str, submission: str) -> ParseOutcome:
+    """Parse reference and submission LaTeX, returning results and warnings.
+
+    Warnings are emitted when:
+    - No problems are found in the reference.
+    - No responses are found in the submission.
+    - The number of responses does not match the number of problems.
+    - A problem has no credit definition.
+    - A problem has no matching answer in the reference.
+    """
+    warnings: list[str] = []
+
     problems = _extract_problems(reference)
     credits_by_macro = _extract_problem_credits(reference)
     answers = _extract_macro_arguments(reference, "answer")
     responses = _extract_macro_arguments(submission, "solution")
 
-    matched_count = min(len(problems), len(responses))
-    return [
-        ParseResult(
-            problem=problems[index][1],
-            credits=credits_by_macro.get(problems[index][0], 0),
-            answer=answers[index] if index < len(answers) else "",
-            response=responses[index],
+    if not problems:
+        msg = "No problems found in the reference."
+        warnings.append(msg)
+        logger.warning(msg)
+
+    if not responses:
+        msg = "No responses (\\solution{}) found in the submission."
+        warnings.append(msg)
+        logger.warning(msg)
+
+    if problems and responses and len(responses) != len(problems):
+        msg = (
+            f"Response count ({len(responses)}) does not match "
+            f"problem count ({len(problems)}); "
+            f"only the first {min(len(problems), len(responses))} "
+            f"will be graded."
         )
-        for index in range(matched_count)
-    ]
+        warnings.append(msg)
+        logger.warning(msg)
+
+    matched_count = min(len(problems), len(responses))
+    results: list[ParseResult] = []
+    for index in range(matched_count):
+        macro_name, problem_text = problems[index]
+
+        credits = credits_by_macro.get(macro_name, 0)
+        if credits == 0:
+            msg = (
+                f"Problem {index + 1} (\\{macro_name}): "
+                f"no credit definition found; defaulting to 0."
+            )
+            warnings.append(msg)
+            logger.warning(msg)
+
+        answer = answers[index] if index < len(answers) else ""
+        if not answer:
+            msg = (
+                f"Problem {index + 1} (\\{macro_name}): "
+                f"no matching \\answer{{}} in the reference."
+            )
+            warnings.append(msg)
+            logger.warning(msg)
+
+        results.append(
+            ParseResult(
+                problem=problem_text,
+                credits=credits,
+                answer=answer,
+                response=responses[index],
+            )
+        )
+
+    return ParseOutcome(results=results, warnings=warnings)
 
 
 def _extract_macro_arguments(latex: str, macro_name: str) -> list[str]:

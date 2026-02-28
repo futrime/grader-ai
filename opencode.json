@@ -1,0 +1,7 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "https://google.github.io/styleguide/pyguide.html",
+    "https://raw.githubusercontent.com/RichardLitt/standard-readme/refs/heads/main/spec.md"
+  ]
+}
