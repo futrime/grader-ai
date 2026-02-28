@@ -1,159 +1,98 @@
-"""Core grading orchestration logic (no file I/O)."""
+"""Core grading orchestration and data helpers."""
 
+import json
 import logging
-import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
-from enum import Enum
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 from openai import OpenAI
 
-from grader_ai.extraction import Submission
+from grader_ai.extraction import Submission, extract_reference, extract_submissions
 from grader_ai.grading import GradeResult, grade
 from grader_ai.parsing import parse
 
 logger = logging.getLogger(__name__)
 
 
-class ProgressStage(Enum):
-    PROBLEM_GRADED = "problem_graded"
-    SUBMISSION_COMPLETE = "submission_complete"
-    ALL_DONE = "all_done"
-
-
-@dataclass(frozen=True)
-class ProgressEvent:
-    stage: ProgressStage
-    submission_name: str = ""
-    submission_index: int = 0
-    total_submissions: int = 0
-    problem_index: int = 0
-    total_problems: int = 0
-    grade_result: GradeResult | None = None
-    elapsed: float = 0.0
-    error: Exception | None = None
-    report: "Report | None" = None
-
-
-ProgressCallback = Callable[[ProgressEvent], None]
-
-
 @dataclass(frozen=True)
 class Report:
     reference: str
     submission: str
-    grades: list[GradeResult]
-    total_score: int
-    max_score: int
-    warnings: list[str]
+    grade_results: list[GradeResult]
+    error: str | None = None
 
 
-def grade_all(
-    client: OpenAI,
+@dataclass(frozen=True)
+class State:
+    submission: str
+    num_problems: int
+    num_graded: int
+
+
+def run(
+    *,
+    reference_file: Path,
+    submissions_dir: Path,
+    reports_dir: Path,
     model: str,
-    reference_name: str,
-    reference_content: str,
-    submissions: list[Submission],
-    parallel: int = 1,
-    on_progress: ProgressCallback | None = None,
-) -> tuple[list[Report], dict[str, Exception]]:
-    if parallel < 1:
-        raise ValueError("parallel must be at least 1")
+    num_parallel: int,
+    on_update: Callable[[State], None] | None = None,
+) -> None:
+    client = OpenAI()
 
-    reports: list[Report] = []
-    errors: dict[str, Exception] = {}
-    total = len(submissions)
+    reference = extract_reference(reference_file)
+    submissions = extract_submissions(submissions_dir)
 
-    def run(index: int, submission: Submission) -> Report:
-        return _grade_submission(
-            client=client,
-            model=model,
-            reference_name=reference_name,
-            reference_content=reference_content,
-            submission=submission,
-            submission_index=index,
-            total_submissions=total,
-            on_progress=on_progress,
-        )
+    def grade_submission(submission: Submission) -> Report:
+        logger.info("Grading submission '%s'...", submission.name)
 
-    with ThreadPoolExecutor(max_workers=parallel) as executor:
-        futures = {
-            executor.submit(run, i, sub): (i, sub) for i, sub in enumerate(submissions)
-        }
-        for future in as_completed(futures):
-            index, submission = futures[future]
-            try:
-                reports.append(future.result())
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Failed to grade submission '%s'.", submission.name)
-                errors[submission.name] = exc
-                if on_progress is not None:
-                    on_progress(
-                        ProgressEvent(
-                            stage=ProgressStage.SUBMISSION_COMPLETE,
-                            submission_name=submission.name,
-                            submission_index=index,
-                            total_submissions=total,
-                            error=exc,
+        try:
+            parse_results = parse(reference, submission.content)
+
+            grade_results: list[GradeResult] = []
+
+            for parsed in parse_results:
+                grade_result = grade(client, model, parsed)
+
+                grade_results.append(grade_result)
+
+                if on_update is not None:
+                    on_update(
+                        State(
+                            submission=submission.name,
+                            num_problems=len(parse_results),
+                            num_graded=len(grade_results),
                         )
                     )
 
-    if on_progress is not None:
-        on_progress(ProgressEvent(stage=ProgressStage.ALL_DONE))
-    return reports, errors
-
-
-def _grade_submission(
-    client: OpenAI,
-    model: str,
-    reference_name: str,
-    reference_content: str,
-    submission: Submission,
-    *,
-    submission_index: int = 0,
-    total_submissions: int = 1,
-    on_progress: ProgressCallback | None = None,
-) -> Report:
-    started_at = time.monotonic()
-    parse_outcome = parse(reference_content, submission.content)
-    results: list[GradeResult] = []
-    n_problems = len(parse_outcome.results)
-
-    for index, parsed in enumerate(parse_outcome.results):
-        graded = grade(client=client, model=model, parsed=parsed)
-        results.append(graded)
-        if on_progress is not None:
-            on_progress(
-                ProgressEvent(
-                    stage=ProgressStage.PROBLEM_GRADED,
-                    submission_name=submission.name,
-                    submission_index=submission_index,
-                    total_submissions=total_submissions,
-                    problem_index=index,
-                    total_problems=n_problems,
-                    grade_result=graded,
-                    elapsed=time.monotonic() - started_at,
-                )
+            return Report(
+                reference=reference_file.name,
+                submission=submission.name,
+                grade_results=grade_results,
             )
 
-    report = Report(
-        reference=reference_name,
-        submission=submission.name,
-        grades=results,
-        total_score=sum(r.score for r in results),
-        max_score=sum(r.credits for r in results),
-        warnings=parse_outcome.warnings,
-    )
-    if on_progress is not None:
-        on_progress(
-            ProgressEvent(
-                stage=ProgressStage.SUBMISSION_COMPLETE,
-                submission_name=submission.name,
-                submission_index=submission_index,
-                total_submissions=total_submissions,
-                elapsed=time.monotonic() - started_at,
-                report=report,
+        except Exception as e:
+            logger.exception(
+                "Failed to grade submission '%s'", submission.name, exc_info=e
             )
-        )
-    return report
+
+            return Report(
+                reference=reference_file.name,
+                submission=submission.name,
+                grade_results=[],
+                error=str(e),
+            )
+
+    reports: list[Report] = []
+
+    with ThreadPoolExecutor(max_workers=num_parallel) as executor:
+        for report in executor.map(grade_submission, submissions):
+            reports.append(report)
+
+    logger.info("Grading complete, writing reports to '%s'...", reports_dir)
+
+    for report in reports:
+        with open(reports_dir / f"{report.submission}.json", "w") as f:
+            json.dump(asdict(report), f)
