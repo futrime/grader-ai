@@ -219,4 +219,6 @@ __marimo__/
 
 .vscode/
 
-/data/
+/references/
+/reports/
+/submissions/
