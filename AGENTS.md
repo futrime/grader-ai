@@ -125,6 +125,8 @@ uv run grader-ai serve --host 0.0.0.0 --port 7860
 - Keep filesystem concerns in CLI/UI/extraction layers.
 - Preserve JSON report schema compatibility.
 - Maintain `.tex` and `.zip` support (including nested zip flows).
+- For Gradio and CLI changes, avoid customization unless unavoidable; prefer official defaults.
+- Always seek for the simplest solution that meets requirements without overengineering.
 
 ## Quick Agent Checklist
 

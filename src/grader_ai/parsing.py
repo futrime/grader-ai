@@ -1,7 +1,8 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 import logging
 import re
-from typing import Any
+from typing import Any, TypeVar
 
 from pylatexenc.latexwalker import LatexGroupNode, LatexMacroNode, LatexWalker
 from pylatexenc.macrospec import LatexContextDb, MacroSpec, MacroStandardArgsParser
@@ -106,6 +107,41 @@ def parse(reference: str, submission: str) -> ParseOutcome:
     return ParseOutcome(results=results, warnings=warnings)
 
 
+_T = TypeVar("_T")
+
+
+def _walk_macros(
+    nodes: list[Any],
+    match: set[str],
+    transform: Callable[[LatexMacroNode, str], _T],
+    extracted: list[_T],
+) -> None:
+    for node in nodes:
+        if isinstance(node, LatexMacroNode):
+            if node.macroname in match and node.nodeargd and node.nodeargd.argnlist:
+                first_arg = node.nodeargd.argnlist[0]
+                if isinstance(first_arg, LatexGroupNode):
+                    content = first_arg.latex_verbatim()[1:-1]
+                elif first_arg is not None:
+                    content = first_arg.latex_verbatim()
+                else:
+                    content = ""
+                if content:
+                    extracted.append(transform(node, content))
+
+            if node.macroname in _DEFINITION_MACROS:
+                continue
+
+            if node.nodeargd:
+                for arg in node.nodeargd.argnlist:
+                    if isinstance(arg, LatexGroupNode):
+                        _walk_macros(arg.nodelist, match, transform, extracted)
+
+        nodelist = getattr(node, "nodelist", None)
+        if nodelist:
+            _walk_macros(nodelist, match, transform, extracted)
+
+
 def _extract_macro_arguments(latex: str, macro_name: str) -> list[str]:
     context = LatexContextDb()
     one_braced_arg = MacroStandardArgsParser("{")
@@ -118,7 +154,7 @@ def _extract_macro_arguments(latex: str, macro_name: str) -> list[str]:
     )
     nodes, _, _ = LatexWalker(latex, latex_context=context).get_latex_nodes(pos=0)
     extracted: list[str] = []
-    _walk(nodes, macro_name, extracted)
+    _walk_macros(nodes, {macro_name}, lambda _n, c: c, extracted)
     return extracted
 
 
@@ -131,7 +167,7 @@ def _extract_problems(latex: str) -> list[tuple[str, str]]:
     )
     nodes, _, _ = LatexWalker(latex, latex_context=context).get_latex_nodes(pos=0)
     extracted: list[tuple[str, str]] = []
-    _walk_problems(nodes, set(_PROBLEM_MACROS), extracted)
+    _walk_macros(nodes, set(_PROBLEM_MACROS), lambda n, c: (n.macroname, c), extracted)
     return extracted
 
 
@@ -151,67 +187,3 @@ def _extract_problem_credits(latex: str) -> dict[str, int]:
             credits[macro_name] = int(points_match.group(1))
 
     return credits
-
-
-def _walk(nodes: list[Any], macro_name: str, extracted: list[str]) -> None:
-    for node in nodes:
-        if isinstance(node, LatexMacroNode):
-            if (
-                node.macroname == macro_name
-                and node.nodeargd
-                and node.nodeargd.argnlist
-            ):
-                first_arg = node.nodeargd.argnlist[0]
-                if isinstance(first_arg, LatexGroupNode):
-                    content = first_arg.latex_verbatim()[1:-1]
-                    if content:
-                        extracted.append(content)
-                elif first_arg is not None:
-                    content = first_arg.latex_verbatim()
-                    if content:
-                        extracted.append(content)
-
-            if node.macroname in _DEFINITION_MACROS:
-                continue
-
-            if node.nodeargd:
-                for arg in node.nodeargd.argnlist:
-                    if isinstance(arg, LatexGroupNode):
-                        _walk(arg.nodelist, macro_name, extracted)
-
-        nodelist = getattr(node, "nodelist", None)
-        if nodelist:
-            _walk(nodelist, macro_name, extracted)
-
-
-def _walk_problems(
-    nodes: list[Any], macro_names: set[str], extracted: list[tuple[str, str]]
-) -> None:
-    for node in nodes:
-        if isinstance(node, LatexMacroNode):
-            if (
-                node.macroname in macro_names
-                and node.nodeargd
-                and node.nodeargd.argnlist
-            ):
-                first_arg = node.nodeargd.argnlist[0]
-                if isinstance(first_arg, LatexGroupNode):
-                    content = first_arg.latex_verbatim()[1:-1]
-                    if content:
-                        extracted.append((node.macroname, content))
-                elif first_arg is not None:
-                    content = first_arg.latex_verbatim()
-                    if content:
-                        extracted.append((node.macroname, content))
-
-            if node.macroname in _DEFINITION_MACROS:
-                continue
-
-            if node.nodeargd:
-                for arg in node.nodeargd.argnlist:
-                    if isinstance(arg, LatexGroupNode):
-                        _walk_problems(arg.nodelist, macro_names, extracted)
-
-        nodelist = getattr(node, "nodelist", None)
-        if nodelist:
-            _walk_problems(nodelist, macro_names, extracted)
