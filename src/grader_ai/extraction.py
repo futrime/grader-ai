@@ -27,6 +27,6 @@ def extract_submissions(submissions_dir: Path) -> list[Submission]:
                 submissions.append(Submission(name=file.stem, content=content))
 
         except Exception as e:
-            logger.exception("Failed to extract submission '%s': %s", file.name, e)
+            logger.exception("Failed to extract submission '%s'", file.name, exc_info=e)
 
     return submissions

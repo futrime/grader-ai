@@ -238,6 +238,7 @@ dependencies = [
     { name = "openai" },
     { name = "pylatexenc" },
     { name = "python-dotenv" },
+    { name = "rich" },
 ]
 
 [package.dev-dependencies]
@@ -252,6 +253,7 @@ requires-dist = [
     { name = "openai", specifier = ">=2.24.0" },
     { name = "pylatexenc", specifier = ">=2.10" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
+    { name = "rich", specifier = ">=14.3.3" },
 ]
 
 [package.metadata.requires-dev]

@@ -17,18 +17,32 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class SubmissionStartedEvent:
+    submission: str
+    num_problems: int
+
+
+@dataclass(frozen=True)
+class ProblemGradedEvent:
+    submission: str
+    problem_idx: int
+
+
+@dataclass(frozen=True)
+class SubmissionFinishedEvent:
+    submission: str
+    error: Exception | None
+
+
+type AnyEvent = SubmissionStartedEvent | ProblemGradedEvent | SubmissionFinishedEvent
+
+
+@dataclass(frozen=True)
 class Report:
     reference: str
     submission: str
     grade_results: list[GradeResult]
     error: str | None = None
-
-
-@dataclass(frozen=True)
-class State:
-    submission: str
-    num_problems: int
-    num_graded: int
 
 
 def run(
@@ -38,8 +52,8 @@ def run(
     reports_dir: Path,
     model: str,
     num_parallel: int,
-    on_update: Callable[[State], None] | None = None,
-) -> None:
+    on_update: Callable[[AnyEvent], None] | None = None,
+) -> list[Report]:
     client = OpenAI()
 
     reference = extract_reference(reference_file)
@@ -51,21 +65,32 @@ def run(
         try:
             parse_results = parse(reference, submission.content)
 
+            if on_update is not None:
+                on_update(
+                    SubmissionStartedEvent(
+                        submission=submission.name, num_problems=len(parse_results)
+                    )
+                )
+
             grade_results: list[GradeResult] = []
 
-            for parsed in parse_results:
+            for idx, parsed in enumerate(parse_results, start=1):
                 grade_result = grade(client, model, parsed)
 
                 grade_results.append(grade_result)
 
                 if on_update is not None:
                     on_update(
-                        State(
-                            submission=submission.name,
-                            num_problems=len(parse_results),
-                            num_graded=len(grade_results),
-                        )
+                        ProblemGradedEvent(submission=submission.name, problem_idx=idx)
                     )
+
+            if on_update is not None:
+                on_update(
+                    SubmissionFinishedEvent(
+                        submission=submission.name,
+                        error=None,
+                    )
+                )
 
             return Report(
                 reference=reference_file.name,
@@ -77,6 +102,14 @@ def run(
             logger.exception(
                 "Failed to grade submission '%s'", submission.name, exc_info=e
             )
+
+            if on_update is not None:
+                on_update(
+                    SubmissionFinishedEvent(
+                        submission=submission.name,
+                        error=e,
+                    )
+                )
 
             return Report(
                 reference=reference_file.name,
@@ -96,3 +129,5 @@ def run(
     for report in reports:
         with open(reports_dir / f"{report.submission}.json", "w") as f:
             json.dump(asdict(report), f)
+
+    return reports
