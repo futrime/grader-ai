@@ -1,16 +1,15 @@
-import re
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 
 from pylatexenc.latexwalker import (
     LatexEnvironmentNode,
-    LatexGroupNode,
     LatexMacroNode,
     LatexWalker,
+    get_default_latex_context_db,
 )
-from pylatexenc.macrospec import LatexContextDb, MacroSpec, MacroStandardArgsParser
+from pylatexenc.macrospec import MacroSpec, MacroStandardArgsParser
 
-_PROBLEM_MACRO_PATTERN: Final = re.compile(r"problem[A-Z]+")
+_PROBLEM_MACROS: Final = ["problemTF", "problemMC", "problemPS", "problemAI"]
 
 
 @dataclass(frozen=True)
@@ -28,9 +27,27 @@ class _Problem:
 
 
 def parse(reference: str, submission: str) -> list[ParseResult]:
-    problems = _extract_problems(reference)
-    answers = _extract_macro_arguments(reference, "answer")
-    responses = _extract_macro_arguments(submission, "solution")
+    context_db = get_default_latex_context_db()
+    context_db.add_context_category(
+        category="grader_ai",
+        macros=[
+            MacroSpec("problemTF", MacroStandardArgsParser("{")),
+            MacroSpec("problemMC", MacroStandardArgsParser("{")),
+            MacroSpec("problemPS", MacroStandardArgsParser("{")),
+            MacroSpec("problemAI", MacroStandardArgsParser("{")),
+            MacroSpec("answer", MacroStandardArgsParser("{")),
+            MacroSpec("solution", MacroStandardArgsParser("{")),
+        ],
+    )
+
+    reference_walker = LatexWalker(reference, latex_context=context_db)
+
+    problems = _extract_problems(reference_walker)
+    answers = _extract_by_macro(reference_walker, macro="answer")
+
+    submission_walker = LatexWalker(submission, latex_context=context_db)
+
+    responses = _extract_by_macro(submission_walker, macro="solution")
 
     results: list[ParseResult] = []
     for index, problem in enumerate(problems):
@@ -50,89 +67,91 @@ def parse(reference: str, submission: str) -> list[ParseResult]:
     return results
 
 
-def _document_children(
-    latex: str, *, context: LatexContextDb | None = None
-) -> list[Any]:
-    nodes, _, _ = LatexWalker(latex, latex_context=context).get_latex_nodes(pos=0)
-    document = next(
-        node
-        for node in nodes
-        if isinstance(node, LatexEnvironmentNode) and node.environmentname == "document"
-    )
-    return document.nodelist
+def _extract_problems(latex_walker: LatexWalker) -> list[_Problem]:
+    credits_by_macro = _extract_credits_by_macro(latex_walker, macros=_PROBLEM_MACROS)
 
+    results: list[_Problem] = []
 
-def _extract_macro_arguments(latex: str, macro_name: str) -> list[str]:
-    context = LatexContextDb()
-    one_braced_arg = MacroStandardArgsParser("{")
-    context.add_context_category(
-        "grader_ai",
-        macros=[
-            MacroSpec("answer", one_braced_arg),
-            MacroSpec("solution", one_braced_arg),
-        ],
-    )
-    nodes = _document_children(latex, context=context)
-    extracted: list[str] = []
+    nodes = _get_document_nodes(latex_walker)
+
     for node in nodes:
-        if not isinstance(node, LatexMacroNode) or node.macroname != macro_name:
+        if not isinstance(node, LatexMacroNode):
             continue
-        extracted.append(_first_argument_text(node))
-    return extracted
 
+        if node.macroname not in _PROBLEM_MACROS:
+            continue
 
-def _extract_problems(latex: str) -> list[_Problem]:
-    macro_names = _extract_problem_macro_names(latex)
-    credits_by_macro: dict[str, int] = {}
-    for macro_name in macro_names:
-        definition_match = re.search(
-            rf"\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\s*\{{\\{macro_name}\}}",
-            latex,
+        content = "".join(
+            subnode.latex_verbatim() for subnode in node.nodeargd.argnlist[0].nodelist
         )
-        if not definition_match:
-            continue
 
-        following = latex[definition_match.end() :]
-        points_match = re.search(r"\((\d+)\s*pts\)", following)
-        if points_match:
-            credits_by_macro[macro_name] = int(points_match.group(1))
+        results.append(
+            _Problem(content=content, credits=credits_by_macro[node.macroname])
+        )
 
-    context = LatexContextDb()
-    one_braced_arg = MacroStandardArgsParser("{")
-    context.add_context_category(
-        "grader_ai_problems",
-        macros=[MacroSpec(name, one_braced_arg) for name in macro_names],
-    )
-    nodes = _document_children(latex, context=context)
-    extracted: list[_Problem] = []
+    return results
+
+
+def _extract_credits_by_macro(
+    latex_walker: LatexWalker, *, macros: list[str]
+) -> dict[str, int]:
+    results: dict[str, int] = {}
+
+    nodes, _, _ = latex_walker.get_latex_nodes()
+
     for node in nodes:
-        if (
-            not isinstance(node, LatexMacroNode)
-            or _PROBLEM_MACRO_PATTERN.fullmatch(node.macroname) is None
-        ):
+        if not isinstance(node, LatexMacroNode):
             continue
-        extracted.append(
-            _Problem(
-                content=_first_argument_text(node),
-                credits=credits_by_macro.get(node.macroname, 0),
-            )
+
+        if node.macroname != "newcommand":
+            continue
+
+        args = [arg for arg in node.nodeargd.argnlist if arg is not None]
+
+        names = [n for n in args[0].nodelist if isinstance(n, LatexMacroNode)]
+        if len(names) != 1:
+            continue
+
+        macroname = names[0].macroname
+        if macroname not in macros:
+            continue
+
+        results[macroname] = int(args[2].nodelist[0].chars)
+
+    return results
+
+
+def _extract_by_macro(latex_walker: LatexWalker, *, macro: str) -> list[str]:
+    results: list[str] = []
+
+    nodes = _get_document_nodes(latex_walker)
+
+    for node in nodes:
+        if not isinstance(node, LatexMacroNode):
+            continue
+
+        if node.macroname != macro:
+            continue
+
+        content = "".join(
+            subnode.latex_verbatim() for subnode in node.nodeargd.argnlist[0].nodelist
         )
-    return extracted
+
+        results.append(content)
+
+    return results
 
 
-def _first_argument_text(node: LatexMacroNode) -> str:
-    first_arg = node.nodeargd.argnlist[0]
-    if isinstance(first_arg, LatexGroupNode):
-        return first_arg.latex_verbatim()[1:-1]
-    return first_arg.latex_verbatim()
+def _get_document_nodes(latex_walker: LatexWalker) -> list:
+    nodes, _, _ = latex_walker.get_latex_nodes()
 
-
-def _extract_problem_macro_names(latex: str) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for macro_name in _PROBLEM_MACRO_PATTERN.findall(latex):
-        if macro_name in seen:
+    for node in nodes:
+        if not isinstance(node, LatexEnvironmentNode):
             continue
-        seen.add(macro_name)
-        ordered.append(macro_name)
-    return ordered
+
+        if node.environmentname != "document":
+            continue
+
+        return node.nodelist
+
+    return []
