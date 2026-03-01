@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "gradio>=6.8.0",
     "openai>=2.24.0",
+    "pandas>=3.0.1",
     "pylatexenc>=2.10",
     "python-dotenv>=1.2.1",
     "rich>=14.3.3",
@@ -17,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 grader-ai = "grader_ai.cli:main"
+grader-web = "grader_ai.web:main"
 
 [build-system]
 requires = ["uv_build>=0.10.4,<0.11.0"]

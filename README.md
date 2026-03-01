@@ -55,6 +55,25 @@ CLI options:
 - `-o, --output`: path to JSON output file (required)
 - `-m, --model`: model name passed to the OpenAI-compatible API (required)
 
+### Web UI
+
+Launch the Gradio UI:
+
+```bash
+uv run grader-web
+```
+
+Web UI CLI options:
+
+- `--host`: host to bind Gradio server
+- `--port`: port to bind Gradio server
+
+In the UI, upload one reference `.tex` file and one or more submission `.zip`
+files (each containing `main.tex`), then provide the model name.
+
+The app grades all uploaded submissions and provides a downloadable ZIP bundle
+of generated JSON reports.
+
 Output is a single JSON report with this structure:
 
 - `reference`: input reference filename

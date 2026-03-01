@@ -12,21 +12,11 @@ class Submission:
     content: str
 
 
-def extract_reference(reference_file: Path) -> str:
-    return reference_file.read_text(encoding="utf-8")
+def extract_reference(file_path: Path) -> str:
+    return file_path.read_text(encoding="utf-8")
 
 
-def extract_submissions(submissions_dir: Path) -> list[Submission]:
-    submissions = []
-
-    for file in submissions_dir.iterdir():
-        try:
-            with ZipFile(file) as archive:
-                content = archive.read("main.tex").decode("utf-8")
-
-                submissions.append(Submission(name=file.stem, content=content))
-
-        except Exception as e:
-            logger.exception("Failed to extract submission '%s'", file.name, exc_info=e)
-
-    return submissions
+def extract_submission(file_path: Path) -> Submission:
+    return Submission(
+        name=file_path.stem, content=ZipFile(file_path).read("main.tex").decode("utf-8")
+    )

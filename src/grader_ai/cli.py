@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from grader_ai.core import (
     AnyEvent,
-    ProblemGradedEvent,
+    ProblemFinishedEvent,
     SubmissionFinishedEvent,
     SubmissionStartedEvent,
     run,
@@ -32,7 +32,7 @@ def main() -> None:
                 event.num_problems,
             )
 
-        elif isinstance(event, ProblemGradedEvent):
+        elif isinstance(event, ProblemFinishedEvent):
             logger.info(
                 "Graded problem %d in submission '%s'",
                 event.problem_idx,
@@ -51,7 +51,7 @@ def main() -> None:
 
     run(
         reference_file=args.reference,
-        submissions_dir=args.submissions,
+        submission_files=_discover_submission_files(args.submission),
         reports_dir=args.output,
         model=args.model,
         num_parallel=args.num_parallel,
@@ -70,10 +70,10 @@ def _parse_args() -> Namespace:
     )
     parser.add_argument(
         "-s",
-        "--submissions",
+        "--submission",
         type=Path,
         required=True,
-        help="Path to submissions (.tex/.zip or directory)",
+        help="Path to submission(s) (.zip or directory for multiple)",
     )
     parser.add_argument(
         "-o",
@@ -99,3 +99,11 @@ def _parse_args() -> Namespace:
     args = parser.parse_args()
 
     return args
+
+
+def _discover_submission_files(submission_path: Path) -> list[Path]:
+    if submission_path.is_dir():
+        return [p for p in submission_path.iterdir()]
+
+    else:
+        return [submission_path]
