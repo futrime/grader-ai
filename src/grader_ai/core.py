@@ -116,7 +116,7 @@ def run(
                 )
 
             grade_results: list[GradeResult] = []
-            for problem_idx, parsed in enumerate(parse_results, start=1):
+            for problem_idx, parsed in enumerate(parse_results):
                 if on_update is not None:
                     on_update(
                         ProblemStartedEvent(

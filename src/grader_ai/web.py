@@ -13,7 +13,6 @@ from pathlib import Path
 import dotenv
 import gradio as gr
 import openai
-import pandas as pd
 
 import grader_ai.core
 
@@ -41,11 +40,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _build_app(temp_dir: Path) -> gr.Blocks:
-    reports_dir = temp_dir / "reports"
-
     def fn(
         reference_file: str, submission_files: list[str], model: str, num_parallel: int
-    ) -> Iterator[tuple[pd.DataFrame, list[str]]]:
+    ) -> Iterator[tuple[list[list[str]], list[str]]]:
         update_queue: queue.Queue[grader_ai.core.AnyEvent] = queue.Queue()
 
         def worker() -> None:
@@ -55,7 +52,7 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
                     submission_files=[Path(s) for s in submission_files],
                     model=model,
                     num_parallel=num_parallel,
-                    reports_dir=reports_dir,
+                    reports_dir=temp_dir / "reports",
                     on_update=lambda e: update_queue.put(e),
                 )
 
@@ -66,50 +63,42 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
         thread = threading.Thread(target=worker)
         thread.start()
 
-        status = pd.DataFrame()
+        status: list[list[str]] = []
         report_files: list[str] = []
 
         while True:
             event = update_queue.get()
 
             if isinstance(event, grader_ai.core.RunStartedEvent):
-                status = pd.DataFrame(
-                    [(s, "Pending") for s in event.submissions],
-                    columns=["Submission", "Progress"],
-                )
+                status = [[s, "Pending"] for s in event.submissions]
 
             elif isinstance(event, grader_ai.core.RunFinishedEvent):
+                report_files = [str(p) for p in event.report_files]
                 break
 
             elif isinstance(event, grader_ai.core.SubmissionStartedEvent):
-                status.iloc[event.submission_idx] = (
-                    event.submission,
-                    f"Running: 0 / {event.num_problems}",
-                )
+                status[event.submission_idx] = [event.submission, "Grading"]
 
             elif isinstance(event, grader_ai.core.SubmissionFinishedEvent):
                 if event.error is not None:
-                    status.iloc[event.submission_idx] = (
+                    status[event.submission_idx] = [
                         event.submission,
-                        f"{event.error}",
-                    )
+                        str(event.error),
+                    ]
                 else:
-                    status.iloc[event.submission_idx] = (
-                        event.submission,
-                        "Done",
-                    )
+                    status[event.submission_idx] = [event.submission, "Done"]
 
             elif isinstance(event, grader_ai.core.ProblemStartedEvent):
-                status.iloc[event.submission_idx] = (
+                status[event.submission_idx] = [
                     event.submission,
-                    f"{event.problem_idx} / {event.num_problems}",
-                )
+                    f"Grading ({event.problem_idx} / {event.num_problems})",
+                ]
 
             elif isinstance(event, grader_ai.core.ProblemFinishedEvent):
-                status.iloc[event.submission_idx] = (
+                status[event.submission_idx] = [
                     event.submission,
-                    f"{event.problem_idx + 1} / {event.num_problems}",
-                )
+                    f"Grading ({event.problem_idx + 1} / {event.num_problems})",
+                ]
 
             yield status, report_files
 
@@ -126,9 +115,7 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
     model = gr.Dropdown(_list_models(), label="Model")
     num_parallel = gr.Slider(minimum=1, maximum=16, value=1, step=1, label="# Parallel")
 
-    status = gr.Dataframe(
-        value=pd.DataFrame(columns=["Submission", "Progress"]), label="Status"
-    )
+    status = gr.Dataframe(headers=["Submission", "Progress"], label="Status")
     report_files = gr.File(file_count="multiple", label="Reports")
 
     app = gr.Interface(

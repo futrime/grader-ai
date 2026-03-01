@@ -10,7 +10,6 @@ requires-python = ">=3.12"
 dependencies = [
     "gradio>=6.8.0",
     "openai>=2.24.0",
-    "pandas>=3.0.1",
     "pylatexenc>=2.10",
     "python-dotenv>=1.2.1",
     "rich>=14.3.3",
