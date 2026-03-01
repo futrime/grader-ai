@@ -7,8 +7,10 @@ import logging
 import queue
 import tempfile
 import threading
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Final, Literal
 
 import dotenv
 import gradio as gr
@@ -17,6 +19,15 @@ import openai
 import grader_ai.core
 
 logger = logging.getLogger(__name__)
+
+_STATUS_KEY_TO_IDX: Final[
+    dict[Literal["Submission", "Status", "# Graded", "# Problems"], int]
+] = {
+    "Submission": 0,
+    "Status": 1,
+    "# Problems": 2,
+    "# Graded": 3,
+}
 
 
 def main() -> None:
@@ -70,35 +81,47 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
             event = update_queue.get()
 
             if isinstance(event, grader_ai.core.RunStartedEvent):
-                status = [[s, "Pending"] for s in event.submissions]
+                status = [
+                    [str(f.name), "Pending", "", ""] for f in event.submission_files
+                ]
 
             elif isinstance(event, grader_ai.core.RunFinishedEvent):
-                report_files = [str(p) for p in event.report_files]
+                # Also prepare a zip archive of all reports.
+                zip_path = temp_dir / "_all_reports.zip"
+
+                with zipfile.ZipFile(zip_path, "w") as zf:
+                    for report_file in event.report_files:
+                        zf.write(report_file, arcname=report_file.name)
+
+                report_files = [str(zip_path)] + [str(p) for p in event.report_files]
+
                 break
 
             elif isinstance(event, grader_ai.core.SubmissionStartedEvent):
-                status[event.submission_idx] = [event.submission, "Grading"]
+                status[event.submission_idx][_STATUS_KEY_TO_IDX["Status"]] = "Grading"
+                status[event.submission_idx][_STATUS_KEY_TO_IDX["# Problems"]] = str(
+                    event.num_problems
+                )
 
             elif isinstance(event, grader_ai.core.SubmissionFinishedEvent):
-                if event.error is not None:
-                    status[event.submission_idx] = [
-                        event.submission,
-                        str(event.error),
-                    ]
+                if event.error is None:
+                    status[event.submission_idx][_STATUS_KEY_TO_IDX["Status"]] = (
+                        "Finished"
+                    )
                 else:
-                    status[event.submission_idx] = [event.submission, "Done"]
+                    status[event.submission_idx][_STATUS_KEY_TO_IDX["Status"]] = (
+                        f"Error ({event.error})"
+                    )
 
             elif isinstance(event, grader_ai.core.ProblemStartedEvent):
-                status[event.submission_idx] = [
-                    event.submission,
-                    f"Grading ({event.problem_idx} / {event.num_problems})",
-                ]
+                status[event.submission_idx][_STATUS_KEY_TO_IDX["# Graded"]] = str(
+                    event.problem_idx
+                )
 
             elif isinstance(event, grader_ai.core.ProblemFinishedEvent):
-                status[event.submission_idx] = [
-                    event.submission,
-                    f"Grading ({event.problem_idx + 1} / {event.num_problems})",
-                ]
+                status[event.submission_idx][_STATUS_KEY_TO_IDX["# Graded"]] = str(
+                    event.problem_idx + 1
+                )
 
             yield status, report_files
 
@@ -115,13 +138,14 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
     model = gr.Dropdown(_list_models(), label="Model")
     num_parallel = gr.Slider(minimum=1, maximum=16, value=1, step=1, label="# Parallel")
 
-    status = gr.Dataframe(headers=["Submission", "Progress"], label="Status")
+    status = gr.Dataframe(headers=list(_STATUS_KEY_TO_IDX.keys()), label="Status")
     report_files = gr.File(file_count="multiple", label="Reports")
 
     app = gr.Interface(
         fn=fn,
         inputs=[reference_file, submission_files, model, num_parallel],
         outputs=[status, report_files],
+        flagging_mode="never",
     )
 
     return app

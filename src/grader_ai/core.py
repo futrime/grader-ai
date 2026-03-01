@@ -9,7 +9,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from grader_ai.extraction import Submission, extract_reference, extract_submission
+from grader_ai.extraction import extract_reference, extract_submission
 from grader_ai.grading import GradeResult, grade
 from grader_ai.parsing import parse
 
@@ -18,15 +18,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Report:
-    reference: str
-    submission: str
+    reference_file: str
+    submission_file: str
     grade_results: list[GradeResult]
-    error: str | None = None
+    error: str | None
 
 
 @dataclass(frozen=True)
 class RunStartedEvent:
-    submissions: list[str]
+    submission_files: list[Path]
 
 
 @dataclass(frozen=True)
@@ -37,30 +37,24 @@ class RunFinishedEvent:
 @dataclass(frozen=True)
 class SubmissionStartedEvent:
     submission_idx: int
-    submission: str
     num_problems: int
 
 
 @dataclass(frozen=True)
 class SubmissionFinishedEvent:
     submission_idx: int
-    submission: str
     error: Exception | None
 
 
 @dataclass(frozen=True)
 class ProblemStartedEvent:
     submission_idx: int
-    submission: str
-    num_problems: int
     problem_idx: int
 
 
 @dataclass(frozen=True)
 class ProblemFinishedEvent:
     submission_idx: int
-    submission: str
-    num_problems: int
     problem_idx: int
 
 
@@ -81,121 +75,87 @@ def run(
     model: str,
     num_parallel: int,
     reports_dir: Path,
-    on_update: Callable[[AnyEvent], None] | None = None,
+    on_update: Callable[[AnyEvent], None],
 ) -> None:
+    on_update(RunStartedEvent(submission_files=submission_files))
+
     client = OpenAI()
 
-    reference = extract_reference(reference_file)
+    reference_content = extract_reference(reference_file)
 
-    submissions = []
-    for submission_file in submission_files:
+    def run_submission(submission_idx: int, submission_file: Path) -> Report:
         try:
-            submission = extract_submission(submission_file)
-            submissions.append(submission)
+            submission_content = extract_submission(submission_file)
 
-        except Exception as e:
-            logger.exception(
-                "Failed to extract submission from '%s'", submission_file, exc_info=e
-            )
+            parse_results = parse(reference_content, submission_content)
 
-    logger.info("Extracted reference and %d submissions", len(submissions))
-
-    def grade_submission(submission_idx: int, submission: Submission) -> Report:
-        logger.info("Grading submission '%s'...", submission.name)
-
-        try:
-            parse_results = parse(reference, submission.content)
-
-            if on_update is not None:
-                on_update(
-                    SubmissionStartedEvent(
-                        submission_idx=submission_idx,
-                        submission=submission.name,
-                        num_problems=len(parse_results),
-                    )
+            on_update(
+                SubmissionStartedEvent(
+                    submission_idx=submission_idx, num_problems=len(parse_results)
                 )
+            )
 
             grade_results: list[GradeResult] = []
             for problem_idx, parsed in enumerate(parse_results):
-                if on_update is not None:
-                    on_update(
-                        ProblemStartedEvent(
-                            submission_idx=submission_idx,
-                            submission=submission.name,
-                            num_problems=len(parse_results),
-                            problem_idx=problem_idx,
-                        )
+                on_update(
+                    ProblemStartedEvent(
+                        submission_idx=submission_idx, problem_idx=problem_idx
                     )
+                )
 
                 grade_result = grade(client, model, parsed)
                 grade_results.append(grade_result)
 
-                if on_update is not None:
-                    on_update(
-                        ProblemFinishedEvent(
-                            submission_idx=submission_idx,
-                            submission=submission.name,
-                            num_problems=len(parse_results),
-                            problem_idx=problem_idx,
-                        )
-                    )
-
-            if on_update is not None:
                 on_update(
-                    SubmissionFinishedEvent(
-                        submission_idx=submission_idx,
-                        submission=submission.name,
-                        error=None,
+                    ProblemFinishedEvent(
+                        submission_idx=submission_idx, problem_idx=problem_idx
                     )
                 )
 
+            on_update(
+                SubmissionFinishedEvent(submission_idx=submission_idx, error=None)
+            )
+
             return Report(
-                reference=reference_file.name,
-                submission=submission.name,
+                reference_file=reference_file.name,
+                submission_file=submission_file.name,
                 grade_results=grade_results,
+                error=None,
             )
 
         except Exception as e:
             logger.exception(
-                "Failed to grade submission '%s'", submission.name, exc_info=e
+                f"Failed to grade submission {submission_file}", exc_info=e
             )
 
-            if on_update is not None:
-                on_update(
-                    SubmissionFinishedEvent(
-                        submission_idx=submission_idx,
-                        submission=submission.name,
-                        error=e,
-                    )
+            on_update(
+                SubmissionFinishedEvent(
+                    submission_idx=submission_idx,
+                    error=e,
                 )
+            )
 
             return Report(
-                reference=reference_file.name,
-                submission=submission.name,
+                reference_file=reference_file.name,
+                submission_file=submission_file.name,
                 grade_results=[],
                 error=str(e),
             )
 
-    if on_update is not None:
-        on_update(RunStartedEvent(submissions=[s.name for s in submissions]))
-
     reports: list[Report] = []
     with ThreadPoolExecutor(max_workers=num_parallel) as executor:
-        for report in executor.map(grade_submission, *zip(*enumerate(submissions))):
+        for report in executor.map(run_submission, *zip(*enumerate(submission_files))):
             reports.append(report)
-
-    logger.info("Grading complete, writing reports to '%s'...", reports_dir)
 
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     report_files: list[Path] = []
     for report in reports:
-        report_file = reports_dir / f"{report.submission}.json"
+        report_file = reports_dir / f"{Path(report.submission_file).stem}.json"
 
         with open(report_file, "w") as f:
             json.dump(asdict(report), f)
 
         report_files.append(report_file)
 
-    if on_update is not None:
-        on_update(RunFinishedEvent(report_files=report_files))
+    on_update(RunFinishedEvent(report_files=report_files))

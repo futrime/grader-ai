@@ -9,6 +9,9 @@ from dotenv import load_dotenv
 from grader_ai.core import (
     AnyEvent,
     ProblemFinishedEvent,
+    ProblemStartedEvent,
+    RunFinishedEvent,
+    RunStartedEvent,
     SubmissionFinishedEvent,
     SubmissionStartedEvent,
     run,
@@ -24,34 +27,55 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO)
 
+    submission_files = _discover_submission_files(args.submission)
+
     def on_update(event: AnyEvent) -> None:
+        if isinstance(event, RunStartedEvent):
+            logger.info(
+                "Started grading %d submissions...", len(event.submission_files)
+            )
+
+        elif isinstance(event, RunFinishedEvent):
+            logger.info("Finished grading %d submissions", len(event.report_files))
+
         if isinstance(event, SubmissionStartedEvent):
             logger.info(
                 "Started grading submission '%s' with %d problems...",
-                event.submission,
+                submission_files[event.submission_idx],
                 event.num_problems,
+            )
+
+        elif isinstance(event, SubmissionFinishedEvent):
+            if event.error is None:
+                logger.info(
+                    "Finished grading submission '%s'",
+                    submission_files[event.submission_idx],
+                )
+
+            else:
+                logger.exception(
+                    "Failed to grade submission '%s'",
+                    submission_files[event.submission_idx],
+                    exc_info=event.error,
+                )
+
+        elif isinstance(event, ProblemStartedEvent):
+            logger.info(
+                "Started grading problem %d in submission '%s'...",
+                event.problem_idx,
+                submission_files[event.submission_idx],
             )
 
         elif isinstance(event, ProblemFinishedEvent):
             logger.info(
                 "Graded problem %d in submission '%s'",
                 event.problem_idx,
-                event.submission,
+                submission_files[event.submission_idx],
             )
-
-        elif isinstance(event, SubmissionFinishedEvent):
-            if event.error is not None:
-                logger.exception(
-                    "Failed to grade submission '%s'",
-                    event.submission,
-                    exc_info=event.error,
-                )
-            else:
-                logger.info("Finished grading submission '%s'", event.submission)
 
     run(
         reference_file=args.reference,
-        submission_files=_discover_submission_files(args.submission),
+        submission_files=submission_files,
         reports_dir=args.output,
         model=args.model,
         num_parallel=args.num_parallel,
