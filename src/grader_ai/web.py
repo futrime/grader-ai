@@ -16,7 +16,7 @@ import dotenv
 import gradio as gr
 import openai
 
-import grader_ai.core
+import grader_ai.grader
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +54,11 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
     def fn(
         reference_file: str, submission_files: list[str], model: str, num_parallel: int
     ) -> Iterator[tuple[list[list[str]], list[str], Path | None]]:
-        update_queue: queue.Queue[grader_ai.core.AnyEvent] = queue.Queue()
+        update_queue: queue.Queue[grader_ai.grader.AnyEvent] = queue.Queue()
 
         def worker() -> None:
             try:
-                grader_ai.core.run(
+                grader_ai.grader.run(
                     reference_file=Path(reference_file),
                     submission_files=[Path(s) for s in submission_files],
                     model=model,
@@ -69,7 +69,7 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
 
             except Exception as e:
                 logger.exception("Failed to grade submissions", exc_info=e)
-                update_queue.put(grader_ai.core.RunFinishedEvent(report_files=[]))
+                update_queue.put(grader_ai.grader.RunFinishedEvent(report_files=[]))
 
         thread = threading.Thread(target=worker)
         thread.start()
@@ -80,23 +80,23 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
         while True:
             event = update_queue.get()
 
-            if isinstance(event, grader_ai.core.RunStartedEvent):
+            if isinstance(event, grader_ai.grader.RunStartedEvent):
                 status = [
                     [str(f.name), "Pending", "", ""] for f in event.submission_files
                 ]
 
-            elif isinstance(event, grader_ai.core.RunFinishedEvent):
+            elif isinstance(event, grader_ai.grader.RunFinishedEvent):
                 report_files = [str(p) for p in event.report_files]
 
                 break
 
-            elif isinstance(event, grader_ai.core.SubmissionStartedEvent):
+            elif isinstance(event, grader_ai.grader.SubmissionStartedEvent):
                 status[event.submission_idx][_STATUS_KEY_TO_IDX["Status"]] = "Grading"
                 status[event.submission_idx][_STATUS_KEY_TO_IDX["# Problems"]] = str(
                     event.num_problems
                 )
 
-            elif isinstance(event, grader_ai.core.SubmissionFinishedEvent):
+            elif isinstance(event, grader_ai.grader.SubmissionFinishedEvent):
                 if event.error is None:
                     status[event.submission_idx][_STATUS_KEY_TO_IDX["Status"]] = (
                         "Finished"
@@ -106,12 +106,12 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
                         f"Error ({event.error})"
                     )
 
-            elif isinstance(event, grader_ai.core.ProblemStartedEvent):
+            elif isinstance(event, grader_ai.grader.ProblemStartedEvent):
                 status[event.submission_idx][_STATUS_KEY_TO_IDX["# Graded"]] = str(
                     event.problem_idx
                 )
 
-            elif isinstance(event, grader_ai.core.ProblemFinishedEvent):
+            elif isinstance(event, grader_ai.grader.ProblemFinishedEvent):
                 status[event.submission_idx][_STATUS_KEY_TO_IDX["# Graded"]] = str(
                     event.problem_idx + 1
                 )

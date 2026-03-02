@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from grader_ai.core import (
+from grader_ai.grader import (
     AnyEvent,
     ProblemFinishedEvent,
     ProblemStartedEvent,
