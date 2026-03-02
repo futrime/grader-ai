@@ -53,7 +53,7 @@ def _parse_args() -> argparse.Namespace:
 def _build_app(temp_dir: Path) -> gr.Blocks:
     def fn(
         reference_file: str, submission_files: list[str], model: str, num_parallel: int
-    ) -> Iterator[tuple[list[list[str]], list[str]]]:
+    ) -> Iterator[tuple[list[list[str]], list[str], Path | None]]:
         update_queue: queue.Queue[grader_ai.core.AnyEvent] = queue.Queue()
 
         def worker() -> None:
@@ -86,14 +86,7 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
                 ]
 
             elif isinstance(event, grader_ai.core.RunFinishedEvent):
-                # Also prepare a zip archive of all reports.
-                zip_path = temp_dir / "_all_reports.zip"
-
-                with zipfile.ZipFile(zip_path, "w") as zf:
-                    for report_file in event.report_files:
-                        zf.write(report_file, arcname=report_file.name)
-
-                report_files = [str(zip_path)] + [str(p) for p in event.report_files]
+                report_files = [str(p) for p in event.report_files]
 
                 break
 
@@ -123,9 +116,15 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
                     event.problem_idx + 1
                 )
 
-            yield status, report_files
+            yield status, report_files, None
 
-        yield status, report_files
+        report_archive = temp_dir / "reports.zip"
+
+        with zipfile.ZipFile(report_archive, "w") as zipf:
+            for report_file in report_files:
+                zipf.write(report_file, arcname=Path(report_file).name)
+
+        yield status, report_files, report_archive
 
         thread.join()
 
@@ -140,11 +139,12 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
 
     status = gr.Dataframe(headers=list(_STATUS_KEY_TO_IDX.keys()), label="Status")
     report_files = gr.File(file_count="multiple", label="Reports")
+    report_archive = gr.DownloadButton(label="Download All Reports")
 
     app = gr.Interface(
         fn=fn,
         inputs=[reference_file, submission_files, model, num_parallel],
-        outputs=[status, report_files],
+        outputs=[status, report_files, report_archive],
         flagging_mode="never",
     )
 
