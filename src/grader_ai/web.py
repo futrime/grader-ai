@@ -130,7 +130,7 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
         thread.join()
 
     reference_file = gr.File(
-        file_count="single", file_types=[".tex"], label="Reference"
+        file_count="single", file_types=[".tex", ".zip"], label="Reference"
     )
     submission_files = gr.File(
         file_count="multiple", file_types=[".zip"], label="Submissions"
