@@ -76,6 +76,7 @@ def run(
     num_parallel: int,
     reports_dir: Path,
     on_update: Callable[[AnyEvent], None],
+    excel_path: Path | None = None,
 ) -> None:
     on_update(RunStartedEvent(submission_files=submission_files))
 
@@ -159,3 +160,8 @@ def run(
         report_files.append(report_file)
 
     on_update(RunFinishedEvent(report_files=report_files))
+
+    if excel_path is not None:
+        from grader_ai.excel_export import export_to_excel
+
+        export_to_excel(excel_path, reports)

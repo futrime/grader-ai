@@ -80,6 +80,7 @@ def main() -> None:
         model=args.model,
         num_parallel=args.num_parallel,
         on_update=on_update,
+        excel_path=args.excel,
     )
 
 
@@ -118,6 +119,13 @@ def _parse_args() -> Namespace:
         type=int,
         default=1,
         help="Number of submissions to grade concurrently",
+    )
+    parser.add_argument(
+        "-x",
+        "--excel",
+        type=Path,
+        default=None,
+        help="Path to assignment Excel file (.xls or .xlsx) to update with grades",
     )
 
     args = parser.parse_args()
