@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from grader_ai.core import Report
+from grader_ai.grader import Report
 
 logger = logging.getLogger(__name__)
 
