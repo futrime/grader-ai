@@ -37,8 +37,8 @@ uv sync
 
 ## Usage
 
-Run the CLI with a reference TeX file, submission TeX file, output path, and
-model name:
+Run the CLI with a reference TeX/ZIP file, submission path (file or directory),
+output directory, and model name:
 
 ```bash
 uv run grader-ai \
@@ -48,12 +48,20 @@ uv run grader-ai \
   --model gpt-4o-mini
 ```
 
+Optionally write grades into an Excel roster:
+
+```bash
+uv run grader-ai -r ref.tex -s submissions/ -o reports -m gpt-4o-mini -x "Assignment 0_学生名单列表.xls"
+```
+
 CLI options:
 
-- `-r, --reference`: path to the reference TeX file (required)
-- `-s, --submission`: path to the student submission TeX file (required)
-- `-o, --output`: path to JSON output file (required)
-- `-m, --model`: model name passed to the OpenAI-compatible API (required)
+- `-r, --reference`: path to the reference .tex or .zip file (required)
+- `-s, --submission`: path to submission(s) — .zip file or directory (required)
+- `-o, --output`: directory to write JSON reports into (required)
+- `-m, --model`: model name for the OpenAI-compatible API (required)
+- `-p, --num-parallel`: number of submissions to grade concurrently (default: 1)
+- `-x, --excel`: path to assignment Excel file (.xls or .xlsx) to update with grades (optional)
 
 ### Web UI
 
