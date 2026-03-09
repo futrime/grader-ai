@@ -12,6 +12,7 @@ from grader_ai.grader import (
     ProblemStartedEvent,
     RunFinishedEvent,
     RunStartedEvent,
+    SubmissionCachedEvent,
     SubmissionFinishedEvent,
     SubmissionStartedEvent,
     run,
@@ -59,6 +60,12 @@ def main() -> None:
                     exc_info=event.error,
                 )
 
+        elif isinstance(event, SubmissionCachedEvent):
+            logger.info(
+                "Using cached report for submission '%s'",
+                submission_files[event.submission_idx],
+            )
+
         elif isinstance(event, ProblemStartedEvent):
             logger.info(
                 "Started grading problem %d in submission '%s'...",
@@ -81,6 +88,7 @@ def main() -> None:
         num_parallel=args.num_parallel,
         on_update=on_update,
         excel_path=args.excel,
+        use_cache=not args.no_cache,
     )
 
 
@@ -126,6 +134,11 @@ def _parse_args() -> Namespace:
         type=Path,
         default=None,
         help="Path to assignment Excel file (.xls or .xlsx) to update with grades",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Ignore existing JSON reports and regrade every submission",
     )
 
     args = parser.parse_args()

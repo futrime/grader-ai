@@ -54,6 +54,10 @@ Optionally write grades into an Excel roster:
 uv run grader-ai -r ref.tex -s submissions/ -o reports -m gpt-4o-mini -x "Assignment 0_学生名单列表.xls"
 ```
 
+By default, existing successful JSON reports in the output directory are reused as
+cache, so restarting the process only grades submissions that do not already have
+a fresh report. Pass `--no-cache` to force a full regrade.
+
 CLI options:
 
 - `-r, --reference`: path to the reference .tex or .zip file (required)
@@ -62,6 +66,7 @@ CLI options:
 - `-m, --model`: model name for the OpenAI-compatible API (required)
 - `-p, --num-parallel`: number of submissions to grade concurrently (default: 1)
 - `-x, --excel`: path to assignment Excel file (.xls or .xlsx) to update with grades (optional)
+- `--no-cache`: ignore existing JSON reports and regrade every submission
 
 ### Web UI
 

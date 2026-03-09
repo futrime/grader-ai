@@ -65,6 +65,7 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
                     num_parallel=num_parallel,
                     reports_dir=temp_dir / "reports",
                     on_update=lambda e: update_queue.put(e),
+                    use_cache=True,
                 )
 
             except Exception as e:
@@ -105,6 +106,15 @@ def _build_app(temp_dir: Path) -> gr.Blocks:
                     status[event.submission_idx][_STATUS_KEY_TO_IDX["Status"]] = (
                         f"Error ({event.error})"
                     )
+
+            elif isinstance(event, grader_ai.grader.SubmissionCachedEvent):
+                status[event.submission_idx][_STATUS_KEY_TO_IDX["Status"]] = "Cached"
+                status[event.submission_idx][_STATUS_KEY_TO_IDX["# Problems"]] = str(
+                    event.num_problems
+                )
+                status[event.submission_idx][_STATUS_KEY_TO_IDX["# Graded"]] = str(
+                    event.num_problems
+                )
 
             elif isinstance(event, grader_ai.grader.ProblemStartedEvent):
                 status[event.submission_idx][_STATUS_KEY_TO_IDX["# Graded"]] = str(

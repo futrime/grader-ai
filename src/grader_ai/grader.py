@@ -47,6 +47,13 @@ class SubmissionFinishedEvent:
 
 
 @dataclass(frozen=True)
+class SubmissionCachedEvent:
+    submission_idx: int
+    num_problems: int
+    report_file: Path
+
+
+@dataclass(frozen=True)
 class ProblemStartedEvent:
     submission_idx: int
     problem_idx: int
@@ -65,6 +72,7 @@ type AnyEvent = (
     | ProblemFinishedEvent
     | SubmissionStartedEvent
     | SubmissionFinishedEvent
+    | SubmissionCachedEvent
 )
 
 
@@ -77,17 +85,54 @@ def run(
     reports_dir: Path,
     on_update: Callable[[AnyEvent], None],
     excel_path: Path | None = None,
+    use_cache: bool = True,
 ) -> None:
     on_update(RunStartedEvent(submission_files=submission_files))
 
-    client = OpenAI()
+    reports_dir.mkdir(parents=True, exist_ok=True)
 
-    reference_content = extract_reference(reference_file)
+    cached_reports: dict[int, Report] = {}
+    submissions_to_grade: list[tuple[int, Path]] = []
+    report_files_by_idx = {
+        submission_idx: reports_dir / f"{submission_file.stem}.json"
+        for submission_idx, submission_file in enumerate(submission_files)
+    }
 
-    def run_submission(submission_idx: int, submission_file: Path) -> Report:
+    for submission_idx, submission_file in enumerate(submission_files):
+        report_file = report_files_by_idx[submission_idx]
+        cached_report = (
+            _load_cached_report(
+                report_file=report_file,
+                reference_file=reference_file,
+                submission_file=submission_file,
+            )
+            if use_cache
+            else None
+        )
+        if cached_report is None:
+            submissions_to_grade.append((submission_idx, submission_file))
+            continue
+
+        cached_reports[submission_idx] = cached_report
+        on_update(
+            SubmissionCachedEvent(
+                submission_idx=submission_idx,
+                num_problems=len(cached_report.grade_results),
+                report_file=report_file,
+            )
+        )
+
+    client = OpenAI() if submissions_to_grade else None
+    reference_content = (
+        extract_reference(reference_file) if submissions_to_grade else None
+    )
+
+    def run_submission(item: tuple[int, Path]) -> tuple[int, Report]:
+        submission_idx, submission_file = item
         try:
             submission_content = extract_submission(submission_file)
 
+            assert reference_content is not None
             parse_results = parse(reference_content, submission_content)
 
             on_update(
@@ -104,6 +149,7 @@ def run(
                     )
                 )
 
+                assert client is not None
                 grade_result = grade(client, model, parsed)
                 grade_results.append(grade_result)
 
@@ -117,7 +163,7 @@ def run(
                 SubmissionFinishedEvent(submission_idx=submission_idx, error=None)
             )
 
-            return Report(
+            return submission_idx, Report(
                 reference_file=reference_file.name,
                 submission_file=submission_file.name,
                 grade_results=grade_results,
@@ -136,26 +182,27 @@ def run(
                 )
             )
 
-            return Report(
+            return submission_idx, Report(
                 reference_file=reference_file.name,
                 submission_file=submission_file.name,
                 grade_results=[],
                 error=str(e),
             )
 
-    reports: list[Report] = []
-    with ThreadPoolExecutor(max_workers=num_parallel) as executor:
-        for report in executor.map(run_submission, *zip(*enumerate(submission_files))):
-            reports.append(report)
+    reports_by_idx: dict[int, Report] = dict(cached_reports)
+    if submissions_to_grade:
+        with ThreadPoolExecutor(max_workers=num_parallel) as executor:
+            for submission_idx, report in executor.map(
+                run_submission, submissions_to_grade
+            ):
+                reports_by_idx[submission_idx] = report
 
-    reports_dir.mkdir(parents=True, exist_ok=True)
-
+    reports = [reports_by_idx[idx] for idx in range(len(submission_files))]
     report_files: list[Path] = []
-    for report in reports:
-        report_file = reports_dir / f"{Path(report.submission_file).stem}.json"
-
-        with open(report_file, "w") as f:
-            json.dump(asdict(report), f)
+    for submission_idx, report in enumerate(reports):
+        report_file = report_files_by_idx[submission_idx]
+        if submission_idx not in cached_reports:
+            _write_report(report_file, report)
 
         report_files.append(report_file)
 
@@ -165,3 +212,53 @@ def run(
         from grader_ai.excel_export import export_to_excel
 
         export_to_excel(excel_path, reports)
+
+
+def _load_cached_report(
+    *,
+    report_file: Path,
+    reference_file: Path,
+    submission_file: Path,
+) -> Report | None:
+    if not report_file.exists():
+        return None
+
+    newest_input_mtime = max(
+        reference_file.stat().st_mtime, submission_file.stat().st_mtime
+    )
+    if report_file.stat().st_mtime < newest_input_mtime:
+        return None
+
+    try:
+        report = _load_report(report_file)
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as e:
+        logger.warning("Ignoring invalid cached report '%s': %s", report_file, e)
+        return None
+
+    if report.error is not None:
+        return None
+
+    if report.reference_file != reference_file.name:
+        return None
+
+    if report.submission_file != submission_file.name:
+        return None
+
+    return report
+
+
+def _load_report(report_file: Path) -> Report:
+    with report_file.open(encoding="utf-8") as f:
+        payload = json.load(f)
+
+    return Report(
+        reference_file=payload["reference_file"],
+        submission_file=payload["submission_file"],
+        grade_results=[GradeResult(**result) for result in payload["grade_results"]],
+        error=payload["error"],
+    )
+
+
+def _write_report(report_file: Path, report: Report) -> None:
+    with report_file.open("w", encoding="utf-8") as f:
+        json.dump(asdict(report), f)
